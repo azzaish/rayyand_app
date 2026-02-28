@@ -3,6 +3,7 @@ import 'screens/splash_screen.dart';
 import 'screens/login_page.dart';
 import 'screens/register_page.dart';
 import 'screens/reset_password_page.dart';
+import 'screens/main_app_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 Future<void> main() async {
@@ -23,6 +24,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => const LoginPage(),
         '/register': (context) => const RegisterPage(),
         '/reset': (context) => const ResetPasswordPage(),
+        '/home': (context) => const MainAppScreen(),
       },
     );
   }
