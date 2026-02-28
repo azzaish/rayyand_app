@@ -90,8 +90,8 @@ class AuthService {
         
         await _saveUsername(email);
 
-        if (!mfaActive && responseData['token'] != null) {
-          await _saveToken(responseData['token']);
+        if (!mfaActive && responseData['access_token'] != null) {
+          await _saveToken(responseData['access_token']);
         }
 
         return {
@@ -130,8 +130,8 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final responseData = data['data'] ?? data;
-        if (responseData['token'] != null) {
-          await _saveToken(responseData['token']);
+        if (responseData['access_token'] != null) {
+          await _saveToken(responseData['access_token']);
         }
         return {"success": true, "data": data};
       } else {

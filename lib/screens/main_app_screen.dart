@@ -28,7 +28,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
           if (result['success'] && result['data'] != null) {
             userName = result['data']['name'] ?? "User";
           } else {
-            // Fallback if user-info fails
             userName = "User";
           }
           isLoading = false;
@@ -65,24 +64,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: const Color(0xFF1E3C72),
-        title: const Text(
-          'Digisoft Dashboard',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.white),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: _handleLogout,
-          ),
-        ],
-      ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF1E3C72)))
           : RefreshIndicator(
@@ -137,7 +118,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 32),
       decoration: const BoxDecoration(
         color: Color(0xFF1E3C72),
         borderRadius: BorderRadius.only(
@@ -148,6 +129,28 @@ class _MainAppScreenState extends State<MainAppScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Digisoft",
+                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none, color: Colors.white),
+                    onPressed: () {},
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.logout, color: Colors.white),
+                    onPressed: _handleLogout,
+                  ),
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 24),
           const Text(
             "Hello, Welcome!",
             style: TextStyle(color: Colors.white70, fontSize: 16),
