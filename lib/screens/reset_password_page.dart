@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({super.key});
@@ -21,17 +22,22 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
     setState(() => isLoading = true);
 
-    // TODO: Implement actual password reset logic here via AuthService
-    await Future.delayed(const Duration(seconds: 2)); 
+    final result = await AuthService.resetPasswordAuto(emailController.text);
 
     setState(() => isLoading = false);
 
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Password reset link sent to your email!"), backgroundColor: Colors.green),
-    );
-    Navigator.pop(context);
+    if (result['success']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['message']), backgroundColor: Colors.green),
+      );
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['message']), backgroundColor: Colors.redAccent),
+      );
+    }
   }
 
   @override

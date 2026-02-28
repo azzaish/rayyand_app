@@ -7,31 +7,37 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   static String get baseUrl => dotenv.env['API_BASE_URL'] ?? '';
+  static SharedPreferences? _prefs;
+
+  static Future<SharedPreferences> get prefs async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
 
   static String _generateMd5(String input) {
     return md5.convert(utf8.encode(input)).toString();
   }
 
   static Future<void> _saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
-    debugPrint("DEBUG: Token saved successfully: $token");
+    final p = await prefs;
+    await p.setString('auth_token', token);
+    debugPrint("DEBUG: Token saved successfully");
   }
 
   static Future<void> _saveUsername(String username) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('last_username', username);
+    final p = await prefs;
+    await p.setString('last_username', username);
     debugPrint("DEBUG: Username saved: $username");
   }
 
   static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_token');
+    final p = await prefs;
+    return p.getString('auth_token');
   }
 
   static Future<String?> getUsername() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('last_username');
+    final p = await prefs;
+    return p.getString('last_username');
   }
 
   static Future<void> logout() async {
@@ -39,30 +45,23 @@ class AuthService {
       final token = await getToken();
       final username = await getUsername();
       
-      debugPrint("DEBUG: Attempting logout for: $username with token: ${token ?? 'NULL'}");
-
       if (token != null && username != null) {
-        final response = await http.post(
+        await http.post(
           Uri.parse("$baseUrl/logout"),
           headers: {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Authorization": "Bearer $token",
           },
-          body: jsonEncode({
-            "username": username,
-          }),
+          body: jsonEncode({"username": username}),
         );
-        debugPrint("DEBUG: Logout Response: ${response.statusCode} - ${response.body}");
-      } else {
-        debugPrint("DEBUG: Skipping API logout: Missing token or username");
       }
     } catch (e) {
       debugPrint("DEBUG: Logout Error: $e");
     } finally {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('auth_token');
-      await prefs.remove('last_username');
+      final p = await prefs;
+      await p.remove('auth_token');
+      await p.remove('last_username');
       debugPrint("DEBUG: Local session data cleared");
     }
   }
@@ -82,7 +81,6 @@ class AuthService {
       );
 
       final data = jsonDecode(response.body);
-      debugPrint("DEBUG: Login Response: ${response.statusCode} - ${response.body}");
 
       if (response.statusCode == 200) {
         final responseData = data['data'] ?? data;
@@ -90,15 +88,12 @@ class AuthService {
         
         await _saveUsername(email);
 
-        if (!mfaActive && responseData['access_token'] != null) {
-          await _saveToken(responseData['access_token']);
+        final String? token = responseData['access_token'] ?? responseData['token'];
+        if (!mfaActive && token != null) {
+          await _saveToken(token);
         }
 
-        return {
-          "success": true,
-          "mfa_active": mfaActive,
-          "data": data,
-        };
+        return {"success": true, "mfa_active": mfaActive, "data": data};
       } else {
         return {
           "success": false,
@@ -106,7 +101,6 @@ class AuthService {
         };
       }
     } catch (e) {
-      debugPrint("DEBUG: Login Exception: $e");
       return {"success": false, "message": "Connection Error"};
     }
   }
@@ -126,19 +120,41 @@ class AuthService {
       );
 
       final data = jsonDecode(response.body);
-      debugPrint("DEBUG: MFA Response: ${response.statusCode} - ${response.body}");
 
       if (response.statusCode == 200) {
         final responseData = data['data'] ?? data;
-        if (responseData['access_token'] != null) {
-          await _saveToken(responseData['access_token']);
+        final String? authToken = responseData['access_token'] ?? responseData['token'];
+        if (authToken != null) {
+          await _saveToken(authToken);
         }
         return {"success": true, "data": data};
       } else {
         return {"success": false, "message": data['message'] ?? "Invalid MFA Token"};
       }
     } catch (e) {
-      debugPrint("DEBUG: MFA Exception: $e");
+      return {"success": false, "message": "Connection error"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> resendMfaToken(String username) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/resend-mfa-token"),
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({"username": username}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {"success": true, "message": data['message'] ?? "Token resent successfully"};
+      } else {
+        return {"success": false, "message": data['message'] ?? "Failed to resend token"};
+      }
+    } catch (e) {
       return {"success": false, "message": "Connection error"};
     }
   }
@@ -146,8 +162,6 @@ class AuthService {
   static Future<Map<String, dynamic>> getUserInfo() async {
     try {
       final token = await getToken();
-      debugPrint("DEBUG: Fetching user info with token: ${token ?? 'NULL'}");
-      
       if (token == null) return {"success": false, "message": "No token found"};
 
       final response = await http.get(
@@ -159,7 +173,6 @@ class AuthService {
       );
 
       final data = jsonDecode(response.body);
-      debugPrint("DEBUG: User Info Response: ${response.statusCode} - ${response.body}");
 
       if (response.statusCode == 200) {
         return {"success": true, "data": data['data']};
@@ -167,7 +180,29 @@ class AuthService {
         return {"success": false, "message": "Failed to fetch user info"};
       }
     } catch (e) {
-      debugPrint("DEBUG: User Info Exception: $e");
+      return {"success": false, "message": "Connection error"};
+    }
+  }
+
+  static Future<Map<String, dynamic>> resetPasswordAuto(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse("$baseUrl/reset-password-auto"),
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({"username": email}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {"success": true, "message": data['message'] ?? "Password reset link sent!"};
+      } else {
+        return {"success": false, "message": data['message'] ?? "Failed to reset password"};
+      }
+    } catch (e) {
       return {"success": false, "message": "Connection error"};
     }
   }
@@ -195,7 +230,6 @@ class AuthService {
       );
 
       final data = jsonDecode(response.body);
-      debugPrint("DEBUG: Register Response: ${response.statusCode} - ${response.body}");
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         return {"success": true, "data": data};
@@ -203,7 +237,6 @@ class AuthService {
         return {"success": false, "message": data['message'] ?? "Registration Failed"};
       }
     } catch (e) {
-      debugPrint("DEBUG: Register Exception: $e");
       return {"success": false, "message": "Connection error"};
     }
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 
 class MainAppScreen extends StatefulWidget {
   const MainAppScreen({super.key});
@@ -17,6 +18,11 @@ class _MainAppScreenState extends State<MainAppScreen> {
   void initState() {
     super.initState();
     _loadUserInfo();
+    _initNotifications();
+  }
+
+  Future<void> _initNotifications() async {
+    await NotificationService.initialize();
   }
 
   Future<void> _loadUserInfo() async {
@@ -43,6 +49,34 @@ class _MainAppScreenState extends State<MainAppScreen> {
     }
   }
 
+  void _showLogoutConfirmation() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Logout Confirmation"),
+          content: const Text("Are you sure you want to log out?"),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close confirmation dialog
+                _handleLogout();
+              },
+              child: const Text(
+                "Logout",
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _handleLogout() async {
     showDialog(
       context: context,
@@ -55,7 +89,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
     await AuthService.logout();
 
     if (mounted) {
-      Navigator.pop(context);
+      Navigator.pop(context); // Close loading indicator
       Navigator.pushReplacementNamed(context, '/login');
     }
   }
@@ -118,7 +152,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24, 10, 24, 32),
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 32),
       decoration: const BoxDecoration(
         color: Color(0xFF1E3C72),
         borderRadius: BorderRadius.only(
@@ -144,7 +178,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.logout, color: Colors.white),
-                    onPressed: _handleLogout,
+                    onPressed: _showLogoutConfirmation, // Changed to show confirmation
                   ),
                 ],
               )

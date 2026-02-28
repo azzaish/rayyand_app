@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 
 class MfaTokenPage extends StatefulWidget {
-  final String email; // Store the email/username used during login
+  final String email;
   final Map<String, dynamic> loginData;
   
   const MfaTokenPage({
@@ -20,9 +21,40 @@ class _MfaTokenPageState extends State<MfaTokenPage> {
   final List<TextEditingController> _controllers = List.generate(6, (index) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
   bool _isLoading = false;
+  
+  Timer? _timer;
+  int _start = 30;
+  bool _isResendDisabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    if (_timer != null) _timer!.cancel();
+    setState(() {
+      _isResendDisabled = true;
+      _start = 30;
+    });
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_start == 0) {
+        setState(() {
+          _isResendDisabled = false;
+          timer.cancel();
+        });
+      } else {
+        setState(() {
+          _start--;
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _timer?.cancel();
     for (var controller in _controllers) {
       controller.dispose();
     }
@@ -30,6 +62,25 @@ class _MfaTokenPageState extends State<MfaTokenPage> {
       node.dispose();
     }
     super.dispose();
+  }
+
+  void _resendToken() async {
+    setState(() => _isLoading = true);
+    final result = await AuthService.resendMfaToken(widget.email);
+    setState(() => _isLoading = false);
+    
+    if (!mounted) return;
+
+    if (result['success']) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['message']), backgroundColor: Colors.green),
+      );
+      _startTimer();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['message']), backgroundColor: Colors.redAccent),
+      );
+    }
   }
 
   void _verifyToken() async {
@@ -42,14 +93,12 @@ class _MfaTokenPageState extends State<MfaTokenPage> {
     }
 
     setState(() => _isLoading = true);
-    
-    // Now using the email passed from the login page
     final result = await AuthService.verifyMfa(
       token: token,
       userId: widget.email,
     );
     
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
     
     if (!mounted) return;
     
@@ -94,7 +143,7 @@ class _MfaTokenPageState extends State<MfaTokenPage> {
                   padding: const EdgeInsets.symmetric(horizontal: 32.0),
                   child: Column(
                     children: [
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 20),
                       const Icon(Icons.security, size: 80, color: Colors.white),
                       const SizedBox(height: 30),
                       const Text(
@@ -113,7 +162,24 @@ class _MfaTokenPageState extends State<MfaTokenPage> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: List.generate(6, (index) => _buildOtpBox(index)),
                       ),
-                      const SizedBox(height: 50),
+                      const SizedBox(height: 30),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text("Didn't receive a code?", style: TextStyle(color: Colors.white70)),
+                          TextButton(
+                            onPressed: _isResendDisabled || _isLoading ? null : _resendToken,
+                            child: Text(
+                              _isResendDisabled ? "Resend in ${_start}s" : "Resend Code",
+                              style: TextStyle(
+                                color: _isResendDisabled || _isLoading ? Colors.white38 : Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 30),
                       _isLoading
                           ? const CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white))
                           : SizedBox(
@@ -149,28 +215,38 @@ class _MfaTokenPageState extends State<MfaTokenPage> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.white24),
       ),
-      child: TextField(
-        controller: _controllers[index],
-        focusNode: _focusNodes[index],
-        textAlign: TextAlign.center,
-        keyboardType: TextInputType.number,
-        maxLength: 1,
-        style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-        decoration: const InputDecoration(
-          counterText: "",
-          border: InputBorder.none,
-        ),
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        onChanged: (value) {
-          if (value.isNotEmpty && index < 5) {
-            _focusNodes[index + 1].requestFocus();
-          } else if (value.isEmpty && index > 0) {
-            _focusNodes[index - 1].requestFocus();
-          }
-          if (index == 5 && value.isNotEmpty) {
-            FocusScope.of(context).unfocus();
+      child: RawKeyboardListener(
+        focusNode: FocusNode(), // Temporary node to handle backspace
+        onKey: (event) {
+          if (event is RawKeyDownEvent && event.logicalKey == LogicalKeyboardKey.backspace) {
+             if (_controllers[index].text.isEmpty && index > 0) {
+               _focusNodes[index - 1].requestFocus();
+             }
           }
         },
+        child: TextField(
+          controller: _controllers[index],
+          focusNode: _focusNodes[index],
+          textAlign: TextAlign.center,
+          keyboardType: TextInputType.number,
+          maxLength: 1,
+          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+          decoration: const InputDecoration(
+            counterText: "",
+            border: InputBorder.none,
+          ),
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: (value) {
+            if (value.isNotEmpty) {
+              if (index < 5) {
+                _focusNodes[index + 1].requestFocus();
+              } else {
+                _focusNodes[index].unfocus();
+                _verifyToken(); // Auto-verify on last digit
+              }
+            }
+          },
+        ),
       ),
     );
   }
